@@ -98,12 +98,18 @@ def preprocess(filepath, align_case = True, rm_stopwords = True,
       lambda x: ' '.join([word for word in x.split() if word not in (stop)]))
   # if lemmatize is true then lemmatize the whole response column
   if lemmatize == True:
+    import nltk
+    nltk.download('wordnet')
     from nltk.stem.wordnet import WordNetLemmatizer
     import re
     token_ser = df['processed_response'].apply(
       lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
     wnl = WordNetLemmatizer()
     df['processed_response'] = token_ser.apply(lambda x: [wnl.lemmatize(words) for words in x])
+  if lemmatize == False:
+    import re
+    df['processed_response'] = df['processed_response'].apply(
+      lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
   # load preprocessed df for later use
   parent_path = filepath[:filepath.index('trns')] + 'trns/' if 'trns' in filepath else filepath
   name = name if '.csv' in name else name + '.csv'
