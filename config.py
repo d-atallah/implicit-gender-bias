@@ -38,7 +38,7 @@ def extract_dfs(filepath, filenames):
     return df_dict
 
 # split dfs and save to drive
-def load_df(filepath, df, name = None):
+def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, name = None):
   """
   Take extracted DataFrame and write it to a shared location.
 
@@ -50,21 +50,32 @@ def load_df(filepath, df, name = None):
   Returns:
   - load_dict: dictionary of load paths
   """
+  if train_size + val_size + test_size != 1.0:
+    raise ValueError("Train, test, and validation splits must sum to 1.")
   X = df.loc[:, df.columns != 'op_gender']
   y = df['op_gender']
   from sklearn.model_selection import train_test_split
-  X_train, X_test, y_train, y_test = train_test_split(
-      X, y, test_size = 0.2, random_state = 42)
+  X_train_temp, X_test, y_train_temp, y_test = train_test_split(
+      X, y, test_size = test_size, random_state = 42, 
+      stratify = X['source'])
+  X_train, X_val, y_train, y_val = train_test_split(
+      X_train_temp, y_train_temp, 
+      test_size = val_size/(train_size + val_size),
+      random_state = 42)
   name = name + '_' if name is not None else ''
   load_dict = {}
   load_dict['X_train'] = filepath + 'trns/' + name + 'X_train.csv'
   X_train.to_csv(load_dict['X_train'])
   load_dict['X_test'] = filepath + 'trns/' + name + 'X_test.csv'
   X_test.to_csv(load_dict['X_test'])
+  load_dict['X_val'] = filepath + 'trns/' + name + 'X_val.csv'
+  X_val.to_csv(load_dict['X_val'])
   load_dict['y_train'] = filepath + 'trns/' + name + 'y_train.csv'
   y_train.to_csv(load_dict['y_train'])
   load_dict['y_test'] = filepath + 'trns/' + name + 'y_test.csv'
   y_test.to_csv(load_dict['y_test'])
+  load_dict['y_val'] = filepath + 'trns/' + name + 'y_val.csv'
+  y_val.to_csv(load_dict['y_val'])
   return load_dict
 
 
