@@ -1,3 +1,16 @@
+# dependencies
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS as stop
+nlp = spacy.load("en_core_web_sm")
+import nltk
+nltk.download('wordnet')
+from nltk.stem.wordnet import WordNetLemmatizer
+wnl = WordNetLemmatizer()
+import re
+
 # specify data filepath based on env (GLC or Colab)
 def filepath():
   """
@@ -28,7 +41,6 @@ def extract_dfs(filepath, filenames):
   df_dict = {}
   # iterate and load dict with dfs
   for file in filenames:
-    import pandas as pd
     file_temp = file[:-4] if file[-4:0] == '.csv' else file
     df_temp = pd.read_csv(filepath + file_temp + '.csv').reset_index()
     # response_text can occassionally be null, we want to remove these records
@@ -38,7 +50,8 @@ def extract_dfs(filepath, filenames):
     return df_dict
 
 # split dfs and save to drive
-def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, name = None):
+def load_df(filepath, df, name = None,
+  train_size = 0.6, val_size = 0.2, test_size = 0.2):
   """
   Take extracted DataFrame and write it to a shared location.
 
@@ -57,7 +70,6 @@ def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, nam
     raise ValueError("Train, test, and validation splits must sum to 1.")
   X = df.loc[:, df.columns != 'op_gender']
   y = df['op_gender']
-  from sklearn.model_selection import train_test_split
   X_train_temp, X_test, y_train_temp, y_test = train_test_split(
       X, y, test_size = test_size, random_state = 42, 
       stratify = X['source'])
@@ -82,23 +94,32 @@ def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, nam
   return load_dict
 
 # create function to remove nouns using POS tagging
-def subj_removal(doc):
+def subj_removal(doc_s):
   """
   Take a string document and apply subject removal. 
-  This function will only work if spaCy library is imported. 
 
   Parameters:
-  - doc: a string document.
+  - doc: a string document or a series of string documents.
 
   Returns:
-  - filtered_doc: a string document where subjects are removed.
+  - A string document, or list of string documents, where subjects are removed.
   """
-  tag_doc = nlp(doc)
-  filtered_doc = [tok.text for tok in tag_doc if tok.dep_ != 'nsubj']
-  return ' '.join(filtered_doc)
+  # if dealing with one document / iterating through documents
+  if type(doc_s) == str:
+    tag_doc = nlp(doc_s)
+    filtered_doc = [tok.text for tok in tag_doc if tok.dep_ != 'nsubj']
+    return ' '.join(filtered_doc)
+  # for speed in processing many docs
+  elif len(list(doc_s)) > 1:
+    docs = list(nlp.pipe(doc_s))
+    docs_lst = []
+    for doc in docs:
+      processed_doc = ' '.join([tok.text for tok in doc if tok.dep_ != 'nsubj'])
+      docs_lst.append(processed_doc)
+    return docs_lst
 
 # flexible preprocessing 
-def preprocess(filepath, align_case = True, subj_rm = True, 
+def preprocess(filepath, align_case = True, subj_rm = False, 
   rm_stopwords = True, lemmatize = True, name = None):
   """
   Take split datasets from shared location and apply preprocessing.
@@ -114,28 +135,6 @@ def preprocess(filepath, align_case = True, subj_rm = True,
   Returns:
   - df: DataFrame with preprocessed response text column
   """
-  # import possible dependencies (rather than doing at every loop)
-  # first check already available modules
-  try: mods = sys.modules
-  except NameError: 
-    import sys
-    mods = sys.modules
-  if 'pandas' not in mods: import pandas as pd
-  if 'spacy' not in mods: 
-    import spacy
-    from spacy.lang.en.stop_words import STOP_WORDS as stop
-    global nlp
-    nlp = spacy.load("en_core_web_sm")
-  if 'spacy' not in mods: 
-    import spacy
-    from spacy.lang.en.stop_words import STOP_WORDS as stop
-  if 'nltk' not in mods:
-    import nltk
-    nltk.download('wordnet')
-    from nltk.stem.wordnet import WordNetLemmatizer
-    global wnl
-    wnl = WordNetLemmatizer()
-  if 're' not in mods: import re
   # begin preprocessing...start by loading df and creating working column
   df = pd.read_csv(filepath).iloc[:, 1:]
   df['processed_response'] = df.response_text
@@ -144,7 +143,7 @@ def preprocess(filepath, align_case = True, subj_rm = True,
     df['processed_response'] = df.processed_response.str.lower()
   # if subj_rm is true, use POS tagging to remove subjects from each doc
   if subj_rm:
-    df['processed_response'] = df.processed_response.apply(subj_removal)
+    df['processed_response'] = subj_removal(df.processed_response)
   # tokenize column using regex for any future steps
   df['processed_response'] = df['processed_response'].apply(
     lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
