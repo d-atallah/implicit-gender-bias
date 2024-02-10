@@ -45,6 +45,9 @@ def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, nam
   Parameters:
   - filepath: path to shared drive where data files reside.
   - df: a DataFrame to be written to the shared location.
+  - train_size: size of train set proportional to overall df.
+  - val_size: size of validation set proportional to overall df.
+  - test_size: size of test set proportional to overall df.
   - name: optional string prefix for the filename.
 
   Returns:
@@ -78,16 +81,32 @@ def load_df(filepath, df, train_size = 0.6, val_size = 0.2, test_size = 0.2, nam
   y_val.to_csv(load_dict['y_val'])
   return load_dict
 
+# create function to remove nouns using POS tagging
+def subj_removal(doc):
+  """
+  Take a string document and apply subject removal. 
+  This function will only work if spaCy library is imported. 
+
+  Parameters:
+  - doc: a string document.
+
+  Returns:
+  - filtered_doc: a string document where subjects are removed.
+  """
+  tag_doc = nlp(doc)
+  filtered_doc = [tok.text for tok in tag_doc if tok.dep_ != 'nsubj']
+  return ' '.join(filtered_doc)
 
 # flexible preprocessing 
-def preprocess(filepath, align_case = True, rm_stopwords = True,
-  lemmatize = True, name = None):
+def preprocess(filepath, align_case = True, subj_rm = True, 
+  rm_stopwords = True, lemmatize = True, name = None):
   """
   Take split datasets from shared location and apply preprocessing.
 
   Parameters:
   - filepath: full path to data files to be preprocessed.
   - align_case: if true, response_text field will be aligned to lower case.
+  - subj_rm: if true, all tagged subjects will be removed from response_text.
   - rm_stopwords: if true, stopwords will be removed from response_text.
   - lemmatize: if true, response_text will be lemmatized.
   - name: optional string prefix for the filename.
@@ -95,32 +114,48 @@ def preprocess(filepath, align_case = True, rm_stopwords = True,
   Returns:
   - df: DataFrame with preprocessed response text column
   """
-  import pandas as pd
-  df = pd.read_csv(filepath).iloc[:, 1:]
-  df['processed_response'] = df.response_text
-  # if align_case is true lowercase the whole response column
-  if align_case == True:
-    df['processed_response'] = df.processed_response.str.lower()
-  # if rm_stopwords is true remove stopwords from the whole response column
-  if rm_stopwords == True:
+  # import possible dependencies (rather than doing at every loop)
+  # first check already available modules
+  try: mods = sys.modules
+  except NameError: 
+    import sys
+    mods = sys.modules
+  if 'pandas' not in mods: import pandas as pd
+  if 'spacy' not in mods: 
     import spacy
     from spacy.lang.en.stop_words import STOP_WORDS as stop
-    df['processed_response'] = df.processed_response.apply(
-      lambda x: ' '.join([word for word in x.split() if word not in (stop)]))
-  # if lemmatize is true then lemmatize the whole response column
-  if lemmatize == True:
+    global nlp
+    nlp = spacy.load("en_core_web_sm")
+  if 'spacy' not in mods: 
+    import spacy
+    from spacy.lang.en.stop_words import STOP_WORDS as stop
+  if 'nltk' not in mods:
     import nltk
     nltk.download('wordnet')
     from nltk.stem.wordnet import WordNetLemmatizer
-    import re
-    token_ser = df['processed_response'].apply(
-      lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
+    global wnl
     wnl = WordNetLemmatizer()
-    df['processed_response'] = token_ser.apply(lambda x: [wnl.lemmatize(words) for words in x])
-  if lemmatize == False:
-    import re
-    df['processed_response'] = df['processed_response'].apply(
-      lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
+  if 're' not in mods: import re
+  # begin preprocessing...start by loading df and creating working column
+  df = pd.read_csv(filepath).iloc[:, 1:]
+  df['processed_response'] = df.response_text
+  # if align_case is true lowercase the whole response column
+  if align_case:
+    df['processed_response'] = df.processed_response.str.lower()
+  # if subj_rm is true, use POS tagging to remove subjects from each doc
+  if subj_rm:
+    df['processed_response'] = df.processed_response.apply(subj_removal)
+  # tokenize column using regex for any future steps
+  df['processed_response'] = df['processed_response'].apply(
+    lambda x: [wrd for wrd in re.findall(r'(?u)\b\w\w+\b', x)])
+  # if rm_stopwords is true remove stopwords from the whole response column
+  if rm_stopwords:
+    df['processed_response'] = df.processed_response.apply(
+      lambda x: [word for word in x if word not in (stop)])
+  # if lemmatize is true then lemmatize the whole response column
+  if lemmatize:
+    df['processed_response'] = df.processed_response.apply(
+      lambda x: [wnl.lemmatize(word) for word in x])
   # load preprocessed df for later use
   parent_path = filepath[:filepath.index('trns')] + 'trns/' if 'trns' in filepath else filepath
   name = name if '.csv' in name else name + '.csv'
