@@ -15,7 +15,7 @@ wnl = WordNetLemmatizer()
 import re
 
 # intialize stop_words with pronouns commented out
-stop_words = {'a',
+stop = {'a',
  'about',
  'above',
  'after',
