@@ -4,3 +4,4 @@ joblib
 nltk
 spacy
 scikit-learn
+gensim
